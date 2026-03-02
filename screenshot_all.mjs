@@ -43,9 +43,7 @@ const browser = await chromium.launch({
 });
 
 const rooms = [
-    { file: 'woonkamer.html', output: 'render_woonkamer.png' },
-    { file: 'gang.html', output: 'render_gang.png' },
-    { file: 'keuken.html', output: 'render_keuken.png' },
+    { file: 'huis.html', output: 'render_huis.png' },
 ];
 
 for (const room of rooms) {

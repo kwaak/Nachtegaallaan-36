@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nachtegaallaan 36 - Hele Huis</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #000; font-family: Arial, sans-serif; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            color: #fff;
+            background: rgba(0,0,0,0.7);
+            padding: 12px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #info h2 { margin-bottom: 4px; font-size: 16px; }
+        #labels { color: #aaa; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>Nachtegaallaan 36</h2>
+        <div id="labels">
+            Woonkamer (4&times;12m) &bull; Gang (1.2&times;6m) &bull; Keuken (3&times;4m)
+        </div>
+        <div style="margin-top:6px; font-size:12px; color:#999;">
+            Klik + sleep om te draaien &bull; Scrollwiel = zoom &bull; Rechts = pan
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ===== Scene setup =====
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb);
+
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
+        camera.position.set(8, 14, 18);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(2, 1.5, 6);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.update();
+
+        // ===== World layout =====
+        // Woonkamer: x=[1.2, 5.2], z=[0, 12]   (4m x 12m)
+        // Gang:      x=[0, 1.2],   z=[6, 12]    (1.2m x 6m)
+        // Keuken:    x=[-1.8, 1.2], z=[0, 4]    (3m x 4m, aanbouw)
+        const WK = { ox: 1.2, oz: 0, W: 4, L: 12, H: 3 };
+        const GG = { ox: 0, oz: 6, W: 1.2, L: 6, H: 3 };
+        const KK = { ox: -1.8, oz: 0, W: 3, L: 4, H: 3 };
+        const H = 3;
+
+        // ===== Shared materials =====
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.9 });
+        const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 });
+        const plintMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.5 });
+        const frameMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f8, roughness: 0.3 });
+        const doorMat = new THREE.MeshStandardMaterial({ color: 0xf0ece4, roughness: 0.6 });
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.8, roughness: 0.2 });
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color: 0xaaddff, transparent: true, opacity: 0.3,
+            roughness: 0.0, metalness: 0.1, transmission: 0.8,
+        });
+        const fixtureMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3, metalness: 0.8 });
+        const bulbMat = new THREE.MeshStandardMaterial({ color: 0xffffee, emissive: 0xffeecc, emissiveIntensity: 0.8 });
+        const woodMat = new THREE.MeshStandardMaterial({ color: 0xb8956a, roughness: 0.7 });
+        const railMat = new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.5 });
+
+        // Wood floor
+        const floorCanvas = document.createElement('canvas');
+        floorCanvas.width = 512; floorCanvas.height = 512;
+        const fCtx = floorCanvas.getContext('2d');
+        fCtx.fillStyle = '#c8a882'; fCtx.fillRect(0, 0, 512, 512);
+        fCtx.strokeStyle = '#b89970'; fCtx.lineWidth = 2;
+        for (let i = 0; i < 512; i += 64) { fCtx.beginPath(); fCtx.moveTo(0, i); fCtx.lineTo(512, i); fCtx.stroke(); }
+        for (let i = 0; i < 3000; i++) {
+            fCtx.fillStyle = `rgba(160,130,90,${Math.random() * 0.15})`;
+            fCtx.fillRect(Math.random() * 512, Math.random() * 512, Math.random() * 40 + 10, 1);
+        }
+        const woodFloorTex = new THREE.CanvasTexture(floorCanvas);
+        woodFloorTex.wrapS = woodFloorTex.wrapT = THREE.RepeatWrapping;
+        const woodFloorMat = new THREE.MeshStandardMaterial({ color: 0xc8a882, roughness: 0.6, map: woodFloorTex });
+
+        // Tile floor
+        const tileCanvas = document.createElement('canvas');
+        tileCanvas.width = 256; tileCanvas.height = 256;
+        const tCtx = tileCanvas.getContext('2d');
+        tCtx.fillStyle = '#d4c4a8'; tCtx.fillRect(0, 0, 256, 256);
+        tCtx.strokeStyle = '#c0b090'; tCtx.lineWidth = 2;
+        for (let i = 0; i <= 256; i += 64) {
+            tCtx.beginPath(); tCtx.moveTo(i, 0); tCtx.lineTo(i, 256); tCtx.stroke();
+            tCtx.beginPath(); tCtx.moveTo(0, i); tCtx.lineTo(256, i); tCtx.stroke();
+        }
+        const tileTex = new THREE.CanvasTexture(tileCanvas);
+        tileTex.wrapS = tileTex.wrapT = THREE.RepeatWrapping;
+        const tileFloorMat = new THREE.MeshStandardMaterial({ color: 0xd4c4a8, roughness: 0.6, map: tileTex });
+
+        // ===== Helper functions =====
+        function addBox(parent, mat, x, y, z, w, h, d) {
+            const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+            m.position.set(x, y, z);
+            m.castShadow = true;
+            parent.add(m);
+            return m;
+        }
+        function addPlane(parent, mat, x, y, z, w, h, rx, ry) {
+            const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+            m.position.set(x, y, z);
+            if (rx) m.rotation.x = rx;
+            if (ry) m.rotation.y = ry;
+            m.receiveShadow = true;
+            parent.add(m);
+            return m;
+        }
+        function addLight(parent, x, y, z, intensity, dist) {
+            const light = new THREE.PointLight(0xfff5e0, intensity, dist);
+            light.position.set(x, y, z);
+            light.castShadow = true;
+            parent.add(light);
+            const fix = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.06, 16), fixtureMat);
+            fix.position.set(x, H - 0.03, z);
+            parent.add(fix);
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.25, 8), fixtureMat);
+            stem.position.set(x, H - 0.15, z);
+            parent.add(stem);
+            const b = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), bulbMat);
+            b.position.set(x, H - 0.28, z);
+            parent.add(b);
+        }
+
+        // Build a wall (PlaneGeometry) with rectangular openings
+        // wallDir: 'x' = wall along x-axis (z=const), 'z' = wall along z-axis (x=const)
+        // openings: [{pos, size, height, sillHeight?}]
+        function buildWallSegments(parent, length, height, openings, localZ) {
+            // openings sorted by position
+            openings.sort((a, b) => a.pos - b.pos);
+            // Build wall sections around openings
+            let cursor = 0;
+            for (const op of openings) {
+                const opLeft = op.pos - op.size / 2;
+                const opRight = op.pos + op.size / 2;
+                const sill = op.sillHeight || 0;
+                const opH = op.height || H;
+
+                // Wall section before opening
+                if (opLeft - cursor > 0.01) {
+                    const w = opLeft - cursor;
+                    const seg = new THREE.Mesh(new THREE.PlaneGeometry(w, height), wallMat);
+                    seg.position.set(cursor + w / 2, height / 2, localZ || 0);
+                    parent.add(seg);
+                }
+                // Wall above opening
+                if (height - (sill + opH) > 0.01) {
+                    const aboveH = height - (sill + opH);
+                    const seg = new THREE.Mesh(new THREE.PlaneGeometry(op.size, aboveH), wallMat);
+                    seg.position.set(op.pos, sill + opH + aboveH / 2, localZ || 0);
+                    parent.add(seg);
+                }
+                // Wall below opening (sill)
+                if (sill > 0.01) {
+                    const seg = new THREE.Mesh(new THREE.PlaneGeometry(op.size, sill), wallMat);
+                    seg.position.set(op.pos, sill / 2, localZ || 0);
+                    parent.add(seg);
+                }
+                cursor = opRight;
+            }
+            // Wall section after last opening
+            if (length - cursor > 0.01) {
+                const w = length - cursor;
+                const seg = new THREE.Mesh(new THREE.PlaneGeometry(w, height), wallMat);
+                seg.position.set(cursor + w / 2, height / 2, localZ || 0);
+                parent.add(seg);
+            }
+        }
+
+        function addDoorFrame(parent, x, y, z, doorW, doorH, axis) {
+            // axis: 'x' = door in x-wall (frame posts along z), 'z' = door in z-wall
+            if (axis === 'z') {
+                addBox(parent, frameMat, x, doorH / 2, z - doorW / 2, 0.1, doorH, 0.05);
+                addBox(parent, frameMat, x, doorH / 2, z + doorW / 2, 0.1, doorH, 0.05);
+                addBox(parent, frameMat, x, doorH, z, 0.1, 0.05, doorW + 0.05);
+            } else {
+                addBox(parent, frameMat, x - doorW / 2, doorH / 2, z, 0.05, doorH, 0.1);
+                addBox(parent, frameMat, x + doorW / 2, doorH / 2, z, 0.05, doorH, 0.1);
+                addBox(parent, frameMat, x, doorH, z, doorW + 0.05, 0.05, 0.1);
+            }
+        }
+
+        function addSingleDoor(parent, x, y, z, doorW, doorH, axis, angle) {
+            if (axis === 'z') {
+                // Door on z-wall (left wall)
+                const door = new THREE.Mesh(new THREE.BoxGeometry(0.04, doorH - 0.05, doorW - 0.02), doorMat);
+                door.geometry.translate(0, 0, (doorW - 0.02) / 2);
+                door.position.set(x, doorH / 2, z - doorW / 2 + 0.02);
+                door.rotation.y = angle;
+                parent.add(door);
+                const h = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.1), handleMat);
+                h.position.set(0.03, 0, doorW * 0.8);
+                door.add(h);
+                return door;
+            } else {
+                // Door on x-wall (front/back wall)
+                const door = new THREE.Mesh(new THREE.BoxGeometry(doorW - 0.02, doorH - 0.05, 0.04), doorMat);
+                door.geometry.translate((doorW - 0.02) / 2, 0, 0);
+                door.position.set(x - doorW / 2 + 0.02, doorH / 2, z);
+                door.rotation.y = angle;
+                parent.add(door);
+                const h = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.03), handleMat);
+                h.position.set(doorW * 0.8, 0, 0.03);
+                door.add(h);
+                return door;
+            }
+        }
+
+        function addWindowFrame(parent, x, y, z, winW, winH, bottom) {
+            // Glass
+            const glass = new THREE.Mesh(new THREE.PlaneGeometry(winW, winH), glassMat);
+            glass.position.set(x, bottom + winH / 2, z + 0.01);
+            parent.add(glass);
+            // Frame
+            addBox(parent, frameMat, x, bottom, z + 0.01, winW + 0.06, 0.06, 0.06);
+            addBox(parent, frameMat, x, bottom + winH, z + 0.01, winW + 0.06, 0.06, 0.06);
+            addBox(parent, frameMat, x - winW / 2, bottom + winH / 2, z + 0.01, 0.06, winH, 0.06);
+            addBox(parent, frameMat, x + winW / 2, bottom + winH / 2, z + 0.01, 0.06, winH, 0.06);
+            // Dividers
+            addBox(parent, frameMat, x, bottom + winH / 2, z + 0.01, 0.03, winH, 0.03);
+            addBox(parent, frameMat, x, bottom + winH / 2, z + 0.01, winW, 0.03, 0.03);
+        }
+
+
+        // ======================================================
+        //  WOONKAMER (4m x 12m) at world x=[1.2, 5.2], z=[0, 12]
+        // ======================================================
+        const wk = new THREE.Group();
+        wk.position.set(WK.ox, 0, WK.oz);
+
+        // Floor (wood)
+        const wkFloorMat = woodFloorMat.clone();
+        wkFloorMat.map = woodFloorTex.clone();
+        wkFloorMat.map.repeat.set(2, 6);
+        wkFloorMat.map.wrapS = wkFloorMat.map.wrapT = THREE.RepeatWrapping;
+        addPlane(wk, wkFloorMat, 2, 0, 6, 4, 12, -Math.PI / 2, 0);
+        // Ceiling
+        addPlane(wk, ceilingMat, 2, H, 6, 4, 12, Math.PI / 2, 0);
+
+        // -- Back wall (z=0) - tuin: garden door + window --
+        const wkBackWall = new THREE.Group();
+        buildWallSegments(wkBackWall, 4, H, [
+            { pos: 0.7, size: 0.9, height: 2.1 },        // tuindeur
+            { pos: 2.55, size: 2.0, height: 2.1, sillHeight: 0.3 }, // raam
+        ]);
+        wkBackWall.position.z = 0;
+        wk.add(wkBackWall);
+
+        addDoorFrame(wk, 0.7, 0, 0, 0.9, 2.1, 'x');
+        const wkGardenDoor = addSingleDoor(wk, 0.7, 0, 0, 0.9, 2.1, 'x', -0.3);
+        // Glass in garden door
+        const wkGdGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.65, 0.9), glassMat);
+        wkGdGlass.position.set(0.42, 0.35, 0.025);
+        wkGardenDoor.add(wkGdGlass);
+
+        addWindowFrame(wk, 2.55, 0, 0, 2.0, 2.1, 0.3);
+
+        // -- Front wall (z=12) - straat: groot raam 3.5m --
+        const wkFrontWall = new THREE.Group();
+        buildWallSegments(wkFrontWall, 4, H, [
+            { pos: 2.0, size: 3.5, height: 2.4, sillHeight: 0.3 },
+        ]);
+        wkFrontWall.rotation.y = Math.PI;
+        wkFrontWall.position.z = 12;
+        wk.add(wkFrontWall);
+
+        // Front window glass + frame
+        const fwGlass = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 2.4), glassMat);
+        fwGlass.position.set(2, 0.3 + 1.2, 12 - 0.01);
+        fwGlass.rotation.y = Math.PI;
+        wk.add(fwGlass);
+        addBox(wk, frameMat, 2, 0.3, 12 - 0.01, 3.56, 0.06, 0.06);
+        addBox(wk, frameMat, 2, 2.7, 12 - 0.01, 3.56, 0.06, 0.06);
+        addBox(wk, frameMat, 0.25, 0.3 + 1.2, 12 - 0.01, 0.06, 2.4, 0.06);
+        addBox(wk, frameMat, 3.75, 0.3 + 1.2, 12 - 0.01, 0.06, 2.4, 0.06);
+        for (let i = 1; i < 4; i++) {
+            addBox(wk, frameMat, 0.25 + i * (3.5 / 4), 0.3 + 1.2, 12 - 0.01, 0.03, 2.4, 0.03);
+        }
+        addBox(wk, frameMat, 2, 0.3 + 1.2, 12 - 0.01, 3.5, 0.03, 0.03);
+
+        // -- Left wall (x=0) - gang side: kitchen door + double doors --
+        const wkLeftWall = new THREE.Group();
+        buildWallSegments(wkLeftWall, 12, H, [
+            { pos: 2.5, size: 0.85, height: 2.1 },    // keukendeur
+            { pos: 10.0, size: 1.6, height: 2.1 },     // dubbele deuren naar gang
+        ]);
+        wkLeftWall.rotation.y = Math.PI / 2;
+        wkLeftWall.position.x = 0;
+        wk.add(wkLeftWall);
+
+        // Kitchen door
+        addDoorFrame(wk, 0, 0, 2.5, 0.85, 2.1, 'z');
+        addSingleDoor(wk, 0, 0, 2.5, 0.85, 2.1, 'z', -0.5);
+
+        // Double doors to gang
+        addDoorFrame(wk, 0, 0, 10.0, 1.6, 2.1, 'z');
+        // Left door (slightly open)
+        const wkGangDL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.05, 0.78), doorMat);
+        wkGangDL.geometry.translate(0, 0, 0.39);
+        wkGangDL.position.set(0, 1.05, 9.22);
+        wkGangDL.rotation.y = -0.4;
+        wk.add(wkGangDL);
+        addBox(wkGangDL, handleMat, 0.03, 0, 0.68, 0.03, 0.03, 0.1);
+        // Right door (closed)
+        const wkGangDR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.05, 0.78), doorMat);
+        wkGangDR.geometry.translate(0, 0, -0.39);
+        wkGangDR.position.set(0, 1.05, 10.78);
+        wk.add(wkGangDR);
+        addBox(wkGangDR, handleMat, 0.03, 0, -0.68, 0.03, 0.03, 0.1);
+
+        // -- Right wall (x=4) - buurmuur (solid) --
+        addPlane(wk, wallMat, 4, H / 2, 6, 12, H, 0, -Math.PI / 2);
+
+        // -- Lighting --
+        addLight(wk, 2, H - 0.15, 9, 1.2, 20);
+        addLight(wk, 2, H - 0.15, 3, 0.8, 15);
+
+        scene.add(wk);
+
+
+        // ======================================================
+        //  GANG (1.2m x 6m) at world x=[0, 1.2], z=[6, 12]
+        // ======================================================
+        const gg = new THREE.Group();
+        gg.position.set(GG.ox, 0, GG.oz);
+
+        // Floor (tiles)
+        const ggFloorMat = tileFloorMat.clone();
+        ggFloorMat.map = tileTex.clone();
+        ggFloorMat.map.repeat.set(2, 8);
+        ggFloorMat.map.wrapS = ggFloorMat.map.wrapT = THREE.RepeatWrapping;
+        addPlane(gg, ggFloorMat, 0.6, 0, 3, 1.2, 6, -Math.PI / 2, 0);
+        // Ceiling
+        addPlane(gg, ceilingMat, 0.6, H, 3, 1.2, 6, Math.PI / 2, 0);
+
+        // -- Front wall (z=6) - voordeur --
+        const ggFrontWall = new THREE.Group();
+        buildWallSegments(ggFrontWall, 1.2, H, [
+            { pos: 0.6, size: 0.95, height: 2.2 },
+        ]);
+        ggFrontWall.rotation.y = Math.PI;
+        ggFrontWall.position.z = 6;
+        gg.add(ggFrontWall);
+
+        addDoorFrame(gg, 0.6, 0, 6, 0.95, 2.2, 'x');
+        // Voordeur (green, heavy)
+        const voordeurMat = new THREE.MeshStandardMaterial({ color: 0x3a5a3a, roughness: 0.5 });
+        const voordeur = new THREE.Mesh(new THREE.BoxGeometry(0.93, 2.15, 0.06), voordeurMat);
+        voordeur.position.set(0.6, 1.1, 6 - 0.01);
+        gg.add(voordeur);
+        // Glass panel
+        const vdGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), glassMat);
+        vdGlass.position.set(0, 0.55, 0.035);
+        voordeur.add(vdGlass);
+        // Letter slot + handle
+        addBox(voordeur, handleMat, 0, -0.15, 0.035, 0.25, 0.04, 0.07);
+        addBox(voordeur, handleMat, 0.35, 0, 0.035, 0.03, 0.15, 0.05);
+
+        // -- Back wall (z=0) - deur naar keuken --
+        const ggBackWall = new THREE.Group();
+        buildWallSegments(ggBackWall, 1.2, H, [
+            { pos: 0.6, size: 0.85, height: 2.1 },
+        ]);
+        ggBackWall.position.z = 0;
+        gg.add(ggBackWall);
+
+        addDoorFrame(gg, 0.6, 0, 0, 0.85, 2.1, 'x');
+        addSingleDoor(gg, 0.6, 0, 0, 0.85, 2.1, 'x', 0.3);
+
+        // -- Left wall (x=0) - WC + kelderdeur --
+        const ggLeftWall = new THREE.Group();
+        buildWallSegments(ggLeftWall, 6, H, [
+            { pos: 1.5, size: 0.7, height: 2.1 },    // WC
+            { pos: 3.2, size: 0.75, height: 2.1 },    // kelder
+        ]);
+        ggLeftWall.rotation.y = Math.PI / 2;
+        ggLeftWall.position.x = 0;
+        gg.add(ggLeftWall);
+
+        // WC door (closed)
+        addDoorFrame(gg, 0, 0, 1.5, 0.7, 2.1, 'z');
+        const wcDoor = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.05, 0.68), doorMat);
+        wcDoor.position.set(0, 1.05, 1.5);
+        gg.add(wcDoor);
+        addBox(wcDoor, handleMat, 0.03, 0, 0.28, 0.03, 0.03, 0.08);
+
+        // Kelder door (closed)
+        addDoorFrame(gg, 0, 0, 3.2, 0.75, 2.1, 'z');
+        const kelderDoor = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.05, 0.73), doorMat);
+        kelderDoor.position.set(0, 1.05, 3.2);
+        gg.add(kelderDoor);
+        addBox(kelderDoor, handleMat, 0.03, 0, 0.30, 0.03, 0.03, 0.08);
+
+        // -- Right wall (x=1.2) - shared with woonkamer, has double doors --
+        // (The double doors are rendered in the woonkamer group; just add the wall sections here)
+        const ggRightWall = new THREE.Group();
+        // Map woonkamer gangDoorZ=10 to gang local: 10 - 6 = 4
+        buildWallSegments(ggRightWall, 6, H, [
+            { pos: 4.0, size: 1.6, height: 2.1 },
+        ]);
+        ggRightWall.rotation.y = -Math.PI / 2;
+        ggRightWall.position.x = 1.2;
+        gg.add(ggRightWall);
+
+        // -- Open trap --
+        const trapStartZ = 4.5;
+        const trapEndZ = 5.7;
+        const trapW = 0.85;
+        const stairCount = 14;
+        const stairH = H / stairCount;
+        const stairD = (trapEndZ - trapStartZ) / stairCount;
+        for (let i = 0; i < stairCount; i++) {
+            const stair = new THREE.Mesh(new THREE.BoxGeometry(trapW, stairH, stairD), woodMat);
+            stair.position.set(1.2 - trapW / 2 - 0.05, stairH / 2 + i * stairH, trapStartZ + stairD / 2 + i * stairD);
+            stair.castShadow = true; stair.receiveShadow = true;
+            gg.add(stair);
+        }
+        // Railing
+        for (let i = 0; i <= stairCount; i += 2) {
+            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 8), railMat);
+            post.position.set(1.2 - trapW - 0.05, i * stairH + 0.45, trapStartZ + i * stairD);
+            gg.add(post);
+        }
+        const railLen = Math.sqrt((trapEndZ - trapStartZ) ** 2 + H ** 2);
+        const railAngle = Math.atan2(H, trapEndZ - trapStartZ);
+        const handrail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, railLen, 8), railMat);
+        handrail.rotation.x = Math.PI / 2 - railAngle;
+        handrail.position.set(1.2 - trapW - 0.05, H / 2 + 0.45, (trapStartZ + trapEndZ) / 2);
+        gg.add(handrail);
+
+        // -- Lighting --
+        addLight(gg, 0.6, H - 0.15, 3, 0.8, 12);
+
+        scene.add(gg);
+
+
+        // ======================================================
+        //  KEUKEN (3m x 4m) at world x=[-1.8, 1.2], z=[0, 4]
+        // ======================================================
+        const kk = new THREE.Group();
+        kk.position.set(KK.ox, 0, KK.oz);
+
+        // Floor (tiles)
+        const kkFloorMat = tileFloorMat.clone();
+        kkFloorMat.map = tileTex.clone();
+        kkFloorMat.map.repeat.set(4, 6);
+        kkFloorMat.map.wrapS = kkFloorMat.map.wrapT = THREE.RepeatWrapping;
+        const kkFloorMatStyled = new THREE.MeshStandardMaterial({ color: 0xe0d8cc, roughness: 0.6, map: kkFloorMat.map });
+        addPlane(kk, kkFloorMatStyled, 1.5, 0, 2, 3, 4, -Math.PI / 2, 0);
+        // Ceiling
+        addPlane(kk, ceilingMat, 1.5, H, 2, 3, 4, Math.PI / 2, 0);
+
+        // -- Back wall (z=0) - tuin: garden door + window --
+        const kkBackWall = new THREE.Group();
+        buildWallSegments(kkBackWall, 3, H, [
+            { pos: 0.65, size: 0.9, height: 2.1 },                   // tuindeur
+            { pos: 2.15, size: 1.5, height: 1.6, sillHeight: 0.8 },  // raam (hoger)
+        ]);
+        kkBackWall.position.z = 0;
+        kk.add(kkBackWall);
+
+        addDoorFrame(kk, 0.65, 0, 0, 0.9, 2.1, 'x');
+        const kkGardenDoor = addSingleDoor(kk, 0.65, 0, 0, 0.9, 2.1, 'x', 0);
+        const kkGdGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.65, 0.9), glassMat);
+        kkGdGlass.position.set(0.42, 0.35, 0.025);
+        kkGardenDoor.add(kkGdGlass);
+
+        addWindowFrame(kk, 2.15, 0, 0, 1.5, 1.6, 0.8);
+
+        // -- Front wall (z=4) - deur naar woonkamer --
+        const kkFrontWall = new THREE.Group();
+        buildWallSegments(kkFrontWall, 3, H, [
+            { pos: 2.4, size: 0.85, height: 2.1 },
+        ]);
+        kkFrontWall.rotation.y = Math.PI;
+        kkFrontWall.position.z = 4;
+        kk.add(kkFrontWall);
+
+        addDoorFrame(kk, 2.4, 0, 4, 0.85, 2.1, 'x');
+
+        // -- Left wall (x=0) - buurmuur (solid) --
+        addPlane(kk, wallMat, 0, H / 2, 2, 4, H, 0, Math.PI / 2);
+
+        // -- Right wall (x=3) - deur naar gang --
+        const kkRightWall = new THREE.Group();
+        // Gang kitchen door at gang z=0 maps to world z=6.
+        // In kitchen coords: z=6-0=6... but kitchen L=4. So the door to the gang
+        // is at the top of the kitchen (z=4), or we need a connection.
+        // Let's place it near z=3.5 on the right wall
+        buildWallSegments(kkRightWall, 4, H, [
+            { pos: 3.5, size: 0.85, height: 2.1 },
+        ]);
+        kkRightWall.rotation.y = -Math.PI / 2;
+        kkRightWall.position.x = 3;
+        kk.add(kkRightWall);
+
+        addDoorFrame(kk, 3, 0, 3.5, 0.85, 2.1, 'z');
+        // Door slightly open
+        const kkGangDoor = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.05, 0.83), doorMat);
+        kkGangDoor.geometry.translate(0, 0, -0.415);
+        kkGangDoor.position.set(3, 1.05, 3.5 + 0.85 / 2 - 0.02);
+        kkGangDoor.rotation.y = 0.4;
+        kk.add(kkGangDoor);
+        addBox(kkGangDoor, handleMat, -0.03, 0, -0.7, 0.03, 0.03, 0.1);
+
+        // -- Lighting --
+        addLight(kk, 1.5, H - 0.15, 2, 1.0, 12);
+
+        scene.add(kk);
+
+
+        // ======================================================
+        //  GROUND PLANE (tuin + straat indicatie)
+        // ======================================================
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x5a8a3a, roughness: 0.9 });
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.set(2, -0.01, 6);
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Straat (grijs, voor het huis)
+        const straatMat = new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.8 });
+        const straat = new THREE.Mesh(new THREE.PlaneGeometry(20, 4), straatMat);
+        straat.rotation.x = -Math.PI / 2;
+        straat.position.set(2, -0.005, 15);
+        scene.add(straat);
+
+        // ======================================================
+        //  GLOBAL LIGHTING
+        // ======================================================
+        scene.add(new THREE.AmbientLight(0xfff5e6, 0.5));
+
+        const sun = new THREE.DirectionalLight(0xfff8e0, 1.5);
+        sun.position.set(5, 10, -5);
+        sun.target.position.set(2, 0, 6);
+        sun.castShadow = true;
+        sun.shadow.mapSize.width = 2048;
+        sun.shadow.mapSize.height = 2048;
+        sun.shadow.camera.left = -10;
+        sun.shadow.camera.right = 10;
+        sun.shadow.camera.top = 15;
+        sun.shadow.camera.bottom = -5;
+        sun.shadow.camera.far = 30;
+        scene.add(sun);
+        scene.add(sun.target);
+
+        // Sunlight from front (street)
+        const frontSun = new THREE.DirectionalLight(0xfff8e0, 0.8);
+        frontSun.position.set(2, 5, 18);
+        frontSun.target.position.set(2, 0, 6);
+        scene.add(frontSun);
+        scene.add(frontSun.target);
+
+        // ======================================================
+        //  ROOM LABELS (3D text sprites)
+        // ======================================================
+        function makeLabel(text, x, y, z) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(0, 0, 256, 64);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, 128, 42);
+            const tex = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+            const sprite = new THREE.Sprite(mat);
+            sprite.position.set(x, y, z);
+            sprite.scale.set(2, 0.5, 1);
+            scene.add(sprite);
+        }
+        makeLabel('Woonkamer', WK.ox + 2, 0.3, WK.oz + 6);
+        makeLabel('Gang', GG.ox + 0.6, 0.3, GG.oz + 3);
+        makeLabel('Keuken', KK.ox + 1.5, 0.3, KK.oz + 2);
+        makeLabel('Tuin', 1.5, 0.3, -2);
+        makeLabel('Straat', 2, 0.3, 15);
+
+        // ======================================================
+        //  RESIZE + ANIMATE
+        // ======================================================
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
