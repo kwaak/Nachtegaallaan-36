@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nachtegaallaan 36 - Bouwtekening Begane Grond</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #fff; font-family: 'Courier New', monospace; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        canvas { border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <canvas id="bp" width="1200" height="1050"></canvas>
+    <script>
+        const canvas = document.getElementById('bp');
+        const ctx = canvas.getContext('2d');
+
+        // Scale: 1m = 55px
+        const S = 55;
+        // Origin offset (to center the drawing)
+        const OX = 200;
+        const OY = 100;
+
+        // World layout (meters):
+        // Woonkamer: x=[1.2, 5.2], z=[0, 12]
+        // Gang:      x=[0, 1.2],   z=[6, 12]
+        // Keuken:    x=[-1.8, 1.2], z=[0, 4]
+        // Note: z goes UP on screen (front=straat at top, tuin at bottom)
+
+        function wx(x) { return OX + x * S; }
+        function wy(z) { return OY + (14 - z) * S; } // flip z so front is at top
+
+        // ===== Drawing helpers =====
+        const WALL_THICK = 4;
+        const WALL_COLOR = '#1a1a1a';
+        const DIM_COLOR = '#0066cc';
+        const LABEL_COLOR = '#333';
+        const DOOR_COLOR = '#888';
+        const WINDOW_COLOR = '#4488cc';
+        const HATCH_COLOR = '#eee';
+
+        function drawWall(x1, z1, x2, z2, thick) {
+            ctx.strokeStyle = WALL_COLOR;
+            ctx.lineWidth = thick || WALL_THICK;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(wx(x1), wy(z1));
+            ctx.lineTo(wx(x2), wy(z2));
+            ctx.stroke();
+        }
+
+        function drawDoor(x, z, width, direction, angle, axis) {
+            // axis: 'x' = door in wall along x (opens along z), 'z' = door in wall along z (opens along x)
+            // direction: 1 or -1 for swing direction
+            ctx.strokeStyle = DOOR_COLOR;
+            ctx.lineWidth = 1.5;
+
+            const w = width * S;
+            const px = wx(x);
+            const pz = wy(z);
+
+            ctx.save();
+            ctx.translate(px, pz);
+
+            if (axis === 'x') {
+                // Door in x-wall: hinge on left, swings in z direction
+                const hingeX = -w / 2 * direction;
+                // Draw arc
+                ctx.beginPath();
+                if (direction > 0) {
+                    ctx.arc(hingeX, 0, w, 0, -Math.PI / 2, true);
+                } else {
+                    ctx.arc(hingeX, 0, w, Math.PI, Math.PI + Math.PI / 2, false);
+                }
+                ctx.stroke();
+                // Draw door leaf
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(hingeX, 0);
+                if (direction > 0) {
+                    ctx.lineTo(hingeX + w * Math.cos(-angle), w * Math.sin(-angle));
+                } else {
+                    ctx.lineTo(hingeX - w * Math.cos(-angle), w * Math.sin(-angle));
+                }
+                ctx.stroke();
+            } else {
+                // Door in z-wall: hinge, swings in x direction
+                const hingeZ = -w / 2 * direction;
+                ctx.beginPath();
+                if (direction > 0) {
+                    ctx.arc(0, hingeZ, w, Math.PI / 2, Math.PI, false);
+                } else {
+                    ctx.arc(0, hingeZ, w, -Math.PI / 2, -Math.PI, true);
+                }
+                ctx.stroke();
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, hingeZ);
+                if (direction > 0) {
+                    ctx.lineTo(-w * Math.sin(angle), hingeZ - w * Math.cos(angle));
+                } else {
+                    ctx.lineTo(-w * Math.sin(angle), hingeZ + w * Math.cos(angle));
+                }
+                ctx.stroke();
+            }
+            ctx.restore();
+
+            // Opening gap in wall
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = WALL_THICK + 2;
+            ctx.beginPath();
+            if (axis === 'x') {
+                ctx.moveTo(wx(x - width / 2), wy(z));
+                ctx.lineTo(wx(x + width / 2), wy(z));
+            } else {
+                ctx.moveTo(wx(x), wy(z - width / 2));
+                ctx.lineTo(wx(x), wy(z + width / 2));
+            }
+            ctx.stroke();
+        }
+
+        function drawDoubleDoor(x, z, width, axis, direction) {
+            const half = width / 2;
+            if (axis === 'z') {
+                drawDoor(x, z - half / 2, half, direction, 0.4, axis);
+                drawDoor(x, z + half / 2, half, -direction, 0.4, axis);
+            } else {
+                drawDoor(x - half / 2, z, half, direction, 0.4, axis);
+                drawDoor(x + half / 2, z, half, -direction, 0.4, axis);
+            }
+        }
+
+        function drawWindow(x1, z1, x2, z2, panes) {
+            // Clear wall
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = WALL_THICK + 2;
+            ctx.beginPath();
+            ctx.moveTo(wx(x1), wy(z1));
+            ctx.lineTo(wx(x2), wy(z2));
+            ctx.stroke();
+
+            // Window lines (3 parallel lines)
+            ctx.strokeStyle = WINDOW_COLOR;
+            const dx = x2 - x1, dz = z2 - z1;
+            const len = Math.sqrt(dx * dx + dz * dz);
+            const nx = -dz / len * 0.04, nz = dx / len * 0.04;
+
+            for (let offset of [-1, 0, 1]) {
+                ctx.lineWidth = offset === 0 ? 1 : 2;
+                ctx.beginPath();
+                ctx.moveTo(wx(x1 + nx * offset), wy(z1 + nz * offset));
+                ctx.lineTo(wx(x2 + nx * offset), wy(z2 + nz * offset));
+                ctx.stroke();
+            }
+
+            // Pane dividers
+            if (panes > 1) {
+                ctx.lineWidth = 1;
+                for (let i = 1; i < panes; i++) {
+                    const t = i / panes;
+                    const px = x1 + dx * t;
+                    const pz = z1 + dz * t;
+                    ctx.beginPath();
+                    ctx.moveTo(wx(px + nx), wy(pz + nz));
+                    ctx.lineTo(wx(px - nx), wy(pz - nz));
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function drawDimension(x1, z1, x2, z2, offset, label) {
+            const dx = x2 - x1, dz = z2 - z1;
+            const len = Math.sqrt(dx * dx + dz * dz);
+            const nx = -dz / len * offset, nz = dx / len * offset;
+
+            const sx1 = wx(x1 + nx), sy1 = wy(z1 + nz);
+            const sx2 = wx(x2 + nx), sy2 = wy(z2 + nz);
+
+            ctx.strokeStyle = DIM_COLOR;
+            ctx.lineWidth = 0.8;
+
+            // Extension lines
+            ctx.beginPath();
+            ctx.moveTo(wx(x1), wy(z1));
+            ctx.lineTo(sx1, sy1);
+            ctx.moveTo(wx(x2), wy(z2));
+            ctx.lineTo(sx2, sy2);
+            ctx.stroke();
+
+            // Dimension line with arrows
+            ctx.beginPath();
+            ctx.moveTo(sx1, sy1);
+            ctx.lineTo(sx2, sy2);
+            ctx.stroke();
+
+            // Arrows
+            const arrowSize = 6;
+            const angle = Math.atan2(sy2 - sy1, sx2 - sx1);
+            for (const [px, py, dir] of [[sx1, sy1, 1], [sx2, sy2, -1]]) {
+                ctx.beginPath();
+                ctx.moveTo(px, py);
+                ctx.lineTo(px + dir * arrowSize * Math.cos(angle - 0.4), py + dir * arrowSize * Math.sin(angle - 0.4));
+                ctx.moveTo(px, py);
+                ctx.lineTo(px + dir * arrowSize * Math.cos(angle + 0.4), py + dir * arrowSize * Math.sin(angle + 0.4));
+                ctx.stroke();
+            }
+
+            // Label
+            const mx = (sx1 + sx2) / 2, my = (sy1 + sy2) / 2;
+            ctx.save();
+            ctx.translate(mx, my);
+            let textAngle = angle;
+            if (textAngle > Math.PI / 2) textAngle -= Math.PI;
+            if (textAngle < -Math.PI / 2) textAngle += Math.PI;
+            ctx.rotate(textAngle);
+            ctx.fillStyle = DIM_COLOR;
+            ctx.font = '11px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(-label.length * 3.5 - 2, -8, label.length * 7 + 4, 14);
+            ctx.fillStyle = DIM_COLOR;
+            ctx.fillText(label, 0, 4);
+            ctx.restore();
+        }
+
+        function drawLabel(text, x, z, size, bold) {
+            ctx.fillStyle = LABEL_COLOR;
+            ctx.font = (bold ? 'bold ' : '') + (size || 13) + 'px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText(text, wx(x), wy(z));
+        }
+
+        function drawStairs(x1, z1, x2, z2, steps, direction) {
+            const dx = (x2 - x1) / steps;
+            const dz = (z2 - z1) / steps;
+            ctx.strokeStyle = '#999';
+            ctx.lineWidth = 0.8;
+            for (let i = 0; i <= steps; i++) {
+                const sx = x1 + dx * i;
+                const sz = z1 + dz * i;
+                if (dx === 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(wx(x1 - 0.42), wy(sz));
+                    ctx.lineTo(wx(x1 + 0.42), wy(sz));
+                    ctx.stroke();
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(wx(sx), wy(z1 - 0.3));
+                    ctx.lineTo(wx(sx), wy(z1 + 0.3));
+                    ctx.stroke();
+                }
+            }
+            // Arrow indicating UP
+            const mx = (x1 + x2) / 2;
+            const mz = (z1 + z2) / 2;
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(wx(x1 + (x2 - x1) * 0.2), wy(z1 + (z2 - z1) * 0.2));
+            ctx.lineTo(wx(x2 - (x2 - x1) * 0.1), wy(z2 - (z2 - z1) * 0.1));
+            ctx.stroke();
+            // Arrow head
+            const ex = wx(x2 - (x2 - x1) * 0.1);
+            const ez = wy(z2 - (z2 - z1) * 0.1);
+            const a = Math.atan2(wy(z2) - wy(z1), wx(x2) - wx(x1));
+            ctx.beginPath();
+            ctx.moveTo(ex, ez);
+            ctx.lineTo(ex - 8 * Math.cos(a - 0.4), ez - 8 * Math.sin(a - 0.4));
+            ctx.moveTo(ex, ez);
+            ctx.lineTo(ex - 8 * Math.cos(a + 0.4), ez - 8 * Math.sin(a + 0.4));
+            ctx.stroke();
+        }
+
+        function fillRoom(x, z, w, l, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(wx(x), wy(z + l), w * S, l * S);
+        }
+
+        // ===== DRAW THE BLUEPRINT =====
+
+        // Title block
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 18px Courier New';
+        ctx.textAlign = 'left';
+        ctx.fillText('NACHTEGAALLAAN 36', 20, 30);
+        ctx.font = '13px Courier New';
+        ctx.fillText('Plattegrond Begane Grond', 20, 50);
+        ctx.fillText('Schaal 1:20', 20, 68);
+
+        // North arrow
+        ctx.save();
+        ctx.translate(canvas.width - 60, 50);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(0, 20); ctx.lineTo(0, -20); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(-6, -10); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(6, -10); ctx.stroke();
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 14px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('N', 0, -26);
+        ctx.restore();
+
+        // Compass labels
+        drawLabel('STRAAT (voorkant)', 2.5, 13.2, 11, true);
+        drawLabel('TUIN (achterkant)', 1.5, -1.2, 11, true);
+
+        // ---- Room fills (light hatch) ----
+        fillRoom(1.2, 0, 4, 12, '#faf8f4');    // woonkamer
+        fillRoom(0, 6, 1.2, 6, '#f4f2ee');      // gang
+        fillRoom(-1.8, 0, 3, 4, '#f0eeea');     // keuken
+
+        // ---- WOONKAMER WALLS ----
+        // Back wall (z=0, tuin)
+        drawWall(1.2, 0, 5.2, 0);
+        // Front wall (z=12, straat)
+        drawWall(1.2, 12, 5.2, 12);
+        // Left wall (x=1.2)
+        drawWall(1.2, 0, 1.2, 12);
+        // Right wall (x=5.2, buurmuur)
+        ctx.lineWidth = 6; // thicker for exterior/party wall
+        drawWall(5.2, 0, 5.2, 12);
+
+        // ---- GANG WALLS ----
+        // Front wall (z=12, voordeur)
+        drawWall(0, 12, 1.2, 12);
+        // Left wall (x=0)
+        drawWall(0, 6, 0, 12);
+        // Back wall (z=6)
+        drawWall(0, 6, 1.2, 6);
+
+        // ---- KEUKEN WALLS ----
+        // Back wall (z=0, tuin)
+        drawWall(-1.8, 0, 1.2, 0);
+        // Left wall (x=-1.8, buitenmuur)
+        ctx.lineWidth = 6;
+        drawWall(-1.8, 0, -1.8, 4);
+        ctx.lineWidth = WALL_THICK;
+        // Front wall (z=4)
+        drawWall(-1.8, 4, 1.2, 4);
+        // Right wall (x=1.2, shared with gang area)
+        drawWall(1.2, 0, 1.2, 4); // already drawn as part of woonkamer
+
+        // Exterior walls thicker (redraw)
+        ctx.lineWidth = 6;
+        drawWall(0, 12, 5.2, 12);   // front (straat)
+        drawWall(-1.8, 0, 5.2, 0);  // back (tuin)
+        drawWall(0, 6, 0, 12);      // gang left
+        drawWall(-1.8, 0, -1.8, 4); // keuken left
+        drawWall(-1.8, 4, 0, 4);    // keuken front (exterior part)
+        drawWall(0, 4, 0, 6);       // between keuken and gang (exterior)
+        drawWall(5.2, 0, 5.2, 12);  // right (buurmuur)
+        ctx.lineWidth = WALL_THICK;
+
+        // ---- OPENINGS ----
+
+        // Woonkamer - groot raam voorkant (z=12)
+        drawWindow(1.45, 12, 4.95, 12, 4);
+
+        // Woonkamer - tuindeur (z=0, x=0.7 from wk left = 1.2+0.7=1.9)
+        drawDoor(1.9, 0, 0.9, -1, 0.5, 'x');
+
+        // Woonkamer - groot raam achterkant (z=0, x=2.55 from wk left = 1.2+2.55=3.75)
+        drawWindow(2.95, 0, 4.75, 0, 2);
+
+        // Woonkamer - keukendeur (x=1.2, z=2.5)
+        drawDoor(1.2, 2.5, 0.85, -1, 0.5, 'z');
+
+        // Woonkamer - dubbele deuren naar gang (x=1.2, z=10)
+        drawDoubleDoor(1.2, 10, 1.6, 'z', -1);
+
+        // Gang - voordeur (z=12, x=0.6)
+        drawDoor(0.6, 12, 0.95, -1, 0.3, 'x');
+
+        // Gang - keukendeur (z=6, x=0.6)
+        drawDoor(0.6, 6, 0.85, 1, 0.4, 'x');
+
+        // Gang - WC deur (x=0, z=6+1.5=7.5)
+        drawDoor(0, 7.5, 0.7, 1, 0.5, 'z');
+
+        // Gang - kelderdeur (x=0, z=6+3.2=9.2)
+        drawDoor(0, 9.2, 0.75, 1, 0.3, 'z');
+
+        // Gang - open trap
+        drawStairs(0.75, 10.5, 0.75, 11.7, 14, 1);
+        drawLabel('trap op', 0.75, 11.1, 9, false);
+
+        // Keuken - tuindeur (z=0, x=-1.8+0.65=-1.15)
+        drawDoor(-1.15, 0, 0.9, -1, 0.4, 'x');
+
+        // Keuken - raam (z=0)
+        drawWindow(-1.8 + 1.4, 0, -1.8 + 2.9, 0, 2);
+
+        // Keuken - deur naar gang (x=1.2, z=3.5)
+        drawDoor(1.2, 3.5, 0.85, 1, 0.4, 'z');
+
+        // Keuken - deur naar woonkamer (z=4, x=-1.8+2.4=0.6)
+        drawDoor(0.6, 4, 0.85, -1, 0.4, 'x');
+
+        // ---- ROOM LABELS ----
+        drawLabel('WOONKAMER', 3.2, 6, 15, true);
+        drawLabel('4.00 x 12.00m', 3.2, 5.4, 10, false);
+
+        drawLabel('GANG', 0.6, 9, 13, true);
+        drawLabel('1.20 x 6.00m', 0.6, 8.5, 9, false);
+
+        drawLabel('KEUKEN', -0.3, 2, 13, true);
+        drawLabel('3.00 x 4.00m', -0.3, 1.5, 9, false);
+
+        // Small labels for doors
+        ctx.fillStyle = '#888';
+        ctx.font = '9px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('voordeur', wx(0.6), wy(12.6));
+        ctx.fillText('tuindeur', wx(1.9), wy(-0.5));
+        ctx.fillText('tuindeur', wx(-1.15), wy(-0.5));
+        ctx.fillText('WC', wx(-0.5), wy(7.5));
+        ctx.fillText('kelder', wx(-0.6), wy(9.2));
+
+        // ---- DIMENSIONS ----
+        // Woonkamer width
+        drawDimension(1.2, 12, 5.2, 12, 0.7, '4.00m');
+        // Woonkamer length
+        drawDimension(5.2, 0, 5.2, 12, 0.7, '12.00m');
+        // Gang width
+        drawDimension(0, 12, 1.2, 12, 1.4, '1.20m');
+        // Gang length
+        drawDimension(0, 6, 0, 12, -0.6, '6.00m');
+        // Keuken width
+        drawDimension(-1.8, 0, 1.2, 0, -0.6, '3.00m');
+        // Keuken length
+        drawDimension(-1.8, 0, -1.8, 4, -0.6, '4.00m');
+
+        // Total width at front
+        drawDimension(0, 12, 5.2, 12, 2.1, '5.20m totaal');
+        // Total width at back
+        drawDimension(-1.8, 0, 5.2, 0, -1.3, '7.00m totaal');
+
+        // ---- LEGEND ----
+        const lx = canvas.width - 180;
+        const ly = canvas.height - 120;
+        ctx.fillStyle = '#f8f8f8';
+        ctx.fillRect(lx - 10, ly - 20, 175, 110);
+        ctx.strokeStyle = '#ccc';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(lx - 10, ly - 20, 175, 110);
+
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 11px Courier New';
+        ctx.textAlign = 'left';
+        ctx.fillText('LEGENDA', lx, ly);
+
+        // Wall
+        ctx.strokeStyle = WALL_COLOR;
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(lx, ly + 18); ctx.lineTo(lx + 30, ly + 18); ctx.stroke();
+        ctx.fillStyle = '#333'; ctx.font = '10px Courier New';
+        ctx.fillText('Muur', lx + 38, ly + 22);
+
+        // Window
+        ctx.strokeStyle = WINDOW_COLOR; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(lx, ly + 36); ctx.lineTo(lx + 30, ly + 36); ctx.stroke();
+        ctx.strokeStyle = WINDOW_COLOR; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(lx, ly + 33); ctx.lineTo(lx + 30, ly + 33); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(lx, ly + 39); ctx.lineTo(lx + 30, ly + 39); ctx.stroke();
+        ctx.fillStyle = '#333';
+        ctx.fillText('Raam', lx + 38, ly + 40);
+
+        // Door
+        ctx.strokeStyle = DOOR_COLOR; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(lx, ly + 56, 15, -0.1, -Math.PI / 2 + 0.1, true); ctx.stroke();
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(lx, ly + 56); ctx.lineTo(lx + 13, ly + 46); ctx.stroke();
+        ctx.fillStyle = '#333'; ctx.font = '10px Courier New';
+        ctx.fillText('Deur', lx + 38, ly + 58);
+
+        // Stairs
+        ctx.strokeStyle = '#999'; ctx.lineWidth = 0.8;
+        for (let i = 0; i < 5; i++) {
+            ctx.beginPath(); ctx.moveTo(lx + i * 6, ly + 68); ctx.lineTo(lx + i * 6, ly + 80); ctx.stroke();
+        }
+        ctx.fillStyle = '#333';
+        ctx.fillText('Trap', lx + 38, ly + 78);
+    </script>
+</body>
+</html>

@@ -43,11 +43,11 @@ const browser = await chromium.launch({
 });
 
 const rooms = [
-    { file: 'huis.html', output: 'render_huis.png' },
+    { file: 'bouwtekening.html', output: 'render_bouwtekening.png' },
 ];
 
 for (const room of rooms) {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 1100 } });
     page.on('console', msg => {
         if (msg.type() === 'error') console.log(`[${room.file}] ERROR:`, msg.text());
     });
