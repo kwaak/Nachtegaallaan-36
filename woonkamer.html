@@ -142,62 +142,100 @@
         ceiling.position.set(W / 2, H, L / 2);
         scene.add(ceiling);
 
-        // Back wall (z=0) - with doorgang (passage) with two doors
-        const backWallGroup = new THREE.Group();
-        // Door opening: 1.6m wide (two 0.8m doors), 2.1m high, centered
-        const bwDoorW = 1.6;
-        const bwDoorH = 2.1;
-        const bwDoorX = W / 2; // centered
-        // Left section of back wall
-        const bwLeft = new THREE.Mesh(new THREE.PlaneGeometry(bwDoorX - bwDoorW / 2, H), wallMat);
-        bwLeft.position.set((bwDoorX - bwDoorW / 2) / 2, H / 2, 0);
-        backWallGroup.add(bwLeft);
-        // Right section of back wall
-        const bwRight = new THREE.Mesh(new THREE.PlaneGeometry(W - (bwDoorX + bwDoorW / 2), H), wallMat);
-        bwRight.position.set((bwDoorX + bwDoorW / 2) + (W - (bwDoorX + bwDoorW / 2)) / 2, H / 2, 0);
-        backWallGroup.add(bwRight);
-        // Above door
-        const bwAbove = new THREE.Mesh(new THREE.PlaneGeometry(bwDoorW, H - bwDoorH), wallMat);
-        bwAbove.position.set(bwDoorX, bwDoorH + (H - bwDoorH) / 2, 0);
-        backWallGroup.add(bwAbove);
-        backWallGroup.position.z = 0;
-        backWallGroup.receiveShadow = true;
-        scene.add(backWallGroup);
-
-        // Door frame for passage
+        // --- Shared materials for doors/frames ---
         const frameMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f8, roughness: 0.3 });
+        const doorMat = new THREE.MeshStandardMaterial({ color: 0xf0ece4, roughness: 0.6 });
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.8, roughness: 0.2 });
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color: 0xaaddff, transparent: true, opacity: 0.3,
+            roughness: 0.0, metalness: 0.1, transmission: 0.8,
+        });
         function addFrame(x, y, z, w, h, d) {
             const frame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
             frame.position.set(x, y, z);
             frame.castShadow = true;
             scene.add(frame);
         }
-        // Passage door frame
-        addFrame(bwDoorX - bwDoorW / 2, bwDoorH / 2, 0, 0.05, bwDoorH, 0.1);        // left post
-        addFrame(bwDoorX + bwDoorW / 2, bwDoorH / 2, 0, 0.05, bwDoorH, 0.1);        // right post
-        addFrame(bwDoorX, bwDoorH, 0, bwDoorW + 0.05, 0.05, 0.1);                    // top beam
 
-        // Two doors in the passage
-        const doorMat = new THREE.MeshStandardMaterial({ color: 0xf0ece4, roughness: 0.6 });
-        // Left door (slightly ajar - rotated open)
-        const doorL = new THREE.Mesh(new THREE.BoxGeometry(0.78, bwDoorH - 0.05, 0.04), doorMat);
-        doorL.geometry.translate(0.39, 0, 0); // pivot at left edge
-        doorL.position.set(bwDoorX - bwDoorW / 2 + 0.02, bwDoorH / 2, 0);
-        doorL.rotation.y = 0.4; // slightly open
-        scene.add(doorL);
-        // Right door (closed)
-        const doorR = new THREE.Mesh(new THREE.BoxGeometry(0.78, bwDoorH - 0.05, 0.04), doorMat);
-        doorR.geometry.translate(-0.39, 0, 0); // pivot at right edge
-        doorR.position.set(bwDoorX + bwDoorW / 2 - 0.02, bwDoorH / 2, 0);
-        scene.add(doorR);
-        // Door handles
-        const handleMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.8, roughness: 0.2 });
-        const handleL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.03), handleMat);
-        handleL.position.set(0.68, 0, 0.03);
-        doorL.add(handleL);
-        const handleR = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.03), handleMat);
-        handleR.position.set(-0.68, bwDoorH / 2, 0.03);
-        doorR.add(handleR);
+        // =============================================
+        // Back wall (z=0) - TUINKANT - groot raam + tuindeur
+        // =============================================
+        // Layout (x): [0.25 wall][0.9 tuindeur][0.35 wall][2.0 raam][0.5 wall]
+        const gardenDoorW = 0.9;
+        const gardenDoorH = 2.1;
+        const gardenDoorX = 0.7;   // center of garden door
+        const bwWinW = 2.0;
+        const bwWinX = 2.55;       // center of back window
+        const bwWinBottom = 0.3;
+        const bwWinTop = 2.4;
+        const bwWinH = bwWinTop - bwWinBottom;
+
+        const backWallGroup = new THREE.Group();
+        // Section 1: left of garden door
+        const bw1W = gardenDoorX - gardenDoorW / 2;
+        const bw1 = new THREE.Mesh(new THREE.PlaneGeometry(bw1W, H), wallMat);
+        bw1.position.set(bw1W / 2, H / 2, 0);
+        backWallGroup.add(bw1);
+        // Section 2: above garden door
+        const bw2 = new THREE.Mesh(new THREE.PlaneGeometry(gardenDoorW, H - gardenDoorH), wallMat);
+        bw2.position.set(gardenDoorX, gardenDoorH + (H - gardenDoorH) / 2, 0);
+        backWallGroup.add(bw2);
+        // Section 3: between door and window
+        const bw3Left = gardenDoorX + gardenDoorW / 2;
+        const bw3Right = bwWinX - bwWinW / 2;
+        const bw3W = bw3Right - bw3Left;
+        const bw3 = new THREE.Mesh(new THREE.PlaneGeometry(bw3W, H), wallMat);
+        bw3.position.set(bw3Left + bw3W / 2, H / 2, 0);
+        backWallGroup.add(bw3);
+        // Section 4: below window
+        const bw4 = new THREE.Mesh(new THREE.PlaneGeometry(bwWinW, bwWinBottom), wallMat);
+        bw4.position.set(bwWinX, bwWinBottom / 2, 0);
+        backWallGroup.add(bw4);
+        // Section 5: above window
+        const bw5 = new THREE.Mesh(new THREE.PlaneGeometry(bwWinW, H - bwWinTop), wallMat);
+        bw5.position.set(bwWinX, bwWinTop + (H - bwWinTop) / 2, 0);
+        backWallGroup.add(bw5);
+        // Section 6: right of window
+        const bw6Left = bwWinX + bwWinW / 2;
+        const bw6W = W - bw6Left;
+        const bw6 = new THREE.Mesh(new THREE.PlaneGeometry(bw6W, H), wallMat);
+        bw6.position.set(bw6Left + bw6W / 2, H / 2, 0);
+        backWallGroup.add(bw6);
+
+        backWallGroup.position.z = 0;
+        backWallGroup.receiveShadow = true;
+        scene.add(backWallGroup);
+
+        // Garden door frame
+        addFrame(gardenDoorX - gardenDoorW / 2, gardenDoorH / 2, 0, 0.05, gardenDoorH, 0.1);
+        addFrame(gardenDoorX + gardenDoorW / 2, gardenDoorH / 2, 0, 0.05, gardenDoorH, 0.1);
+        addFrame(gardenDoorX, gardenDoorH, 0, gardenDoorW + 0.05, 0.05, 0.1);
+        // Garden door (with glass panel, slightly open)
+        const gardenDoor = new THREE.Mesh(new THREE.BoxGeometry(0.88, gardenDoorH - 0.05, 0.04), doorMat);
+        gardenDoor.geometry.translate(0.44, 0, 0); // pivot at left edge
+        gardenDoor.position.set(gardenDoorX - gardenDoorW / 2 + 0.02, gardenDoorH / 2, 0);
+        gardenDoor.rotation.y = -0.3;
+        scene.add(gardenDoor);
+        // Glass in garden door (upper half)
+        const gdGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 1.0), glassMat);
+        gdGlass.position.set(0.44, 0.35, 0.025);
+        gardenDoor.add(gdGlass);
+        // Garden door handle
+        const gdHandle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.03), handleMat);
+        gdHandle.position.set(0.76, 0, 0.03);
+        gardenDoor.add(gdHandle);
+
+        // Back window glass
+        const bwGlass = new THREE.Mesh(new THREE.PlaneGeometry(bwWinW, bwWinH), glassMat);
+        bwGlass.position.set(bwWinX, bwWinBottom + bwWinH / 2, 0.01);
+        scene.add(bwGlass);
+        // Back window frame
+        addFrame(bwWinX, bwWinBottom, 0.01, bwWinW + 0.06, 0.06, 0.06);
+        addFrame(bwWinX, bwWinTop, 0.01, bwWinW + 0.06, 0.06, 0.06);
+        addFrame(bwWinX - bwWinW / 2, bwWinBottom + bwWinH / 2, 0.01, 0.06, bwWinH, 0.06);
+        addFrame(bwWinX + bwWinW / 2, bwWinBottom + bwWinH / 2, 0.01, 0.06, bwWinH, 0.06);
+        addFrame(bwWinX, bwWinBottom + bwWinH / 2, 0.01, 0.03, bwWinH, 0.03); // vertical divider
+        addFrame(bwWinX, bwWinBottom + bwWinH / 2, 0.01, bwWinW, 0.03, 0.03); // horizontal divider
 
         // Front wall (z=L) - large window across almost entire width (~3.5m)
         const frontWallGroup = new THREE.Group();
@@ -228,14 +266,6 @@
         scene.add(frontWallGroup);
 
         // Large front window glass
-        const glassMat = new THREE.MeshPhysicalMaterial({
-            color: 0xaaddff,
-            transparent: true,
-            opacity: 0.3,
-            roughness: 0.0,
-            metalness: 0.1,
-            transmission: 0.8,
-        });
         const windowGlass = new THREE.Mesh(new THREE.PlaneGeometry(fwGlassW, fwGlassH), glassMat);
         windowGlass.position.set(W / 2, fwGlassBottom + fwGlassH / 2, L - 0.01);
         windowGlass.rotation.y = Math.PI;
@@ -255,45 +285,84 @@
         // Horizontal divider
         addFrame(W / 2, fwGlassBottom + fwGlassH / 2, L - 0.01, fwGlassW, 0.03, 0.03);
 
-        // Left wall (x=0) - with door to kitchen
-        const leftWallGroup = new THREE.Group();
+        // =============================================
+        // Left wall (x=0) - GANGKANT - dubbele deuren + keukendeur
+        // =============================================
+        // Layout (z): [0..2.08 wall][2.08..2.93 keukendeur][2.93..9.2 wall][9.2..10.8 dubbele deuren][10.8..12 wall]
         const kitchenDoorW = 0.85;
         const kitchenDoorH = 2.1;
-        const kitchenDoorZ = 3.0; // position along the wall (distance from z=0)
-        // Section before door
-        const lwBefore = new THREE.Mesh(new THREE.PlaneGeometry(kitchenDoorZ - kitchenDoorW / 2, H), wallMat);
-        lwBefore.position.set((kitchenDoorZ - kitchenDoorW / 2) / 2, H / 2, 0);
-        leftWallGroup.add(lwBefore);
-        // Section after door
-        const lwAfterStart = kitchenDoorZ + kitchenDoorW / 2;
-        const lwAfterW = L - lwAfterStart;
-        const lwAfter = new THREE.Mesh(new THREE.PlaneGeometry(lwAfterW, H), wallMat);
-        lwAfter.position.set(lwAfterStart + lwAfterW / 2, H / 2, 0);
-        leftWallGroup.add(lwAfter);
-        // Above door
-        const lwAbove = new THREE.Mesh(new THREE.PlaneGeometry(kitchenDoorW, H - kitchenDoorH), wallMat);
-        lwAbove.position.set(kitchenDoorZ, kitchenDoorH + (H - kitchenDoorH) / 2, 0);
-        leftWallGroup.add(lwAbove);
+        const kitchenDoorZ = 2.5;     // center of kitchen door (near back/garden)
+        const gangDoorW = 1.6;        // double doors width
+        const gangDoorH = 2.1;
+        const gangDoorZ = 10.0;       // center of double doors (near front/street)
+
+        const leftWallGroup = new THREE.Group();
+        // Section 1: z=0 to kitchen door
+        const lw1W = kitchenDoorZ - kitchenDoorW / 2;
+        const lw1 = new THREE.Mesh(new THREE.PlaneGeometry(lw1W, H), wallMat);
+        lw1.position.set(lw1W / 2, H / 2, 0);
+        leftWallGroup.add(lw1);
+        // Section 2: above kitchen door
+        const lw2 = new THREE.Mesh(new THREE.PlaneGeometry(kitchenDoorW, H - kitchenDoorH), wallMat);
+        lw2.position.set(kitchenDoorZ, kitchenDoorH + (H - kitchenDoorH) / 2, 0);
+        leftWallGroup.add(lw2);
+        // Section 3: between kitchen door and double doors
+        const lw3Left = kitchenDoorZ + kitchenDoorW / 2;
+        const lw3Right = gangDoorZ - gangDoorW / 2;
+        const lw3W = lw3Right - lw3Left;
+        const lw3 = new THREE.Mesh(new THREE.PlaneGeometry(lw3W, H), wallMat);
+        lw3.position.set(lw3Left + lw3W / 2, H / 2, 0);
+        leftWallGroup.add(lw3);
+        // Section 4: above double doors
+        const lw4 = new THREE.Mesh(new THREE.PlaneGeometry(gangDoorW, H - gangDoorH), wallMat);
+        lw4.position.set(gangDoorZ, gangDoorH + (H - gangDoorH) / 2, 0);
+        leftWallGroup.add(lw4);
+        // Section 5: after double doors to z=L
+        const lw5Left = gangDoorZ + gangDoorW / 2;
+        const lw5W = L - lw5Left;
+        const lw5 = new THREE.Mesh(new THREE.PlaneGeometry(lw5W, H), wallMat);
+        lw5.position.set(lw5Left + lw5W / 2, H / 2, 0);
+        leftWallGroup.add(lw5);
+
         leftWallGroup.rotation.y = Math.PI / 2;
         leftWallGroup.position.set(0, 0, 0);
         leftWallGroup.receiveShadow = true;
         scene.add(leftWallGroup);
 
-        // Kitchen door frame
-        addFrame(0, kitchenDoorH / 2, kitchenDoorZ - kitchenDoorW / 2, 0.1, kitchenDoorH, 0.05);  // left post
-        addFrame(0, kitchenDoorH / 2, kitchenDoorZ + kitchenDoorW / 2, 0.1, kitchenDoorH, 0.05);  // right post
-        addFrame(0, kitchenDoorH, kitchenDoorZ, 0.1, 0.05, kitchenDoorW + 0.05);                   // top beam
-
-        // Kitchen door (slightly open)
+        // --- Kitchen door frame + door ---
+        addFrame(0, kitchenDoorH / 2, kitchenDoorZ - kitchenDoorW / 2, 0.1, kitchenDoorH, 0.05);
+        addFrame(0, kitchenDoorH / 2, kitchenDoorZ + kitchenDoorW / 2, 0.1, kitchenDoorH, 0.05);
+        addFrame(0, kitchenDoorH, kitchenDoorZ, 0.1, 0.05, kitchenDoorW + 0.05);
         const kitchenDoor = new THREE.Mesh(new THREE.BoxGeometry(0.04, kitchenDoorH - 0.05, 0.83), doorMat);
-        kitchenDoor.geometry.translate(0, 0, 0.415); // pivot at one edge
+        kitchenDoor.geometry.translate(0, 0, 0.415);
         kitchenDoor.position.set(0, kitchenDoorH / 2, kitchenDoorZ - kitchenDoorW / 2 + 0.02);
-        kitchenDoor.rotation.y = -0.5; // slightly open into kitchen
+        kitchenDoor.rotation.y = -0.5;
         scene.add(kitchenDoor);
-        // Kitchen door handle
         const kHandle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.1), handleMat);
         kHandle.position.set(0.03, 0, 0.7);
         kitchenDoor.add(kHandle);
+
+        // --- Double doors to hallway (gang) frame + doors ---
+        addFrame(0, gangDoorH / 2, gangDoorZ - gangDoorW / 2, 0.1, gangDoorH, 0.05);
+        addFrame(0, gangDoorH / 2, gangDoorZ + gangDoorW / 2, 0.1, gangDoorH, 0.05);
+        addFrame(0, gangDoorH, gangDoorZ, 0.1, 0.05, gangDoorW + 0.05);
+        // Left door (slightly open)
+        const gangDoorL = new THREE.Mesh(new THREE.BoxGeometry(0.04, gangDoorH - 0.05, 0.78), doorMat);
+        gangDoorL.geometry.translate(0, 0, 0.39);
+        gangDoorL.position.set(0, gangDoorH / 2, gangDoorZ - gangDoorW / 2 + 0.02);
+        gangDoorL.rotation.y = -0.4;
+        scene.add(gangDoorL);
+        const ghL = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.1), handleMat);
+        ghL.position.set(0.03, 0, 0.68);
+        gangDoorL.add(ghL);
+        // Right door (closed)
+        const gangDoorR = new THREE.Mesh(new THREE.BoxGeometry(0.04, gangDoorH - 0.05, 0.78), doorMat);
+        gangDoorR.geometry.translate(0, 0, -0.39);
+        gangDoorR.position.set(0, gangDoorH / 2, gangDoorZ + gangDoorW / 2 - 0.02);
+        scene.add(gangDoorR);
+        const ghR = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.1), handleMat);
+        ghR.position.set(0.03, 0, -0.68);
+        gangDoorR.add(ghR);
 
         // Right wall (x=W)
         const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(L, H), wallMat);
@@ -302,25 +371,34 @@
         rightWall.receiveShadow = true;
         scene.add(rightWall);
 
-        // --- Plinten (baseboards) - split around door openings ---
+        // --- Plinten (baseboards) - split around all door openings ---
         function addPlint(x, y, z, w, rotY) {
             const plint = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, 0.015), plintMat);
             plint.position.set(x, y, z);
             plint.rotation.y = rotY;
             scene.add(plint);
         }
-        // Back wall: left of passage, right of passage
-        const bwPlintL = (bwDoorX - bwDoorW / 2);
-        addPlint(bwPlintL / 2, 0.04, 0.01, bwPlintL, 0);
-        const bwPlintRStart = bwDoorX + bwDoorW / 2;
-        const bwPlintRW = W - bwPlintRStart;
-        addPlint(bwPlintRStart + bwPlintRW / 2, 0.04, 0.01, bwPlintRW, 0);
-        // Left wall: before kitchen door, after kitchen door
-        const lwPlintBefore = kitchenDoorZ - kitchenDoorW / 2;
-        addPlint(0.01, 0.04, lwPlintBefore / 2, lwPlintBefore, Math.PI / 2);
-        const lwPlintAfterStart = kitchenDoorZ + kitchenDoorW / 2;
-        const lwPlintAfterW = L - lwPlintAfterStart;
-        addPlint(0.01, 0.04, lwPlintAfterStart + lwPlintAfterW / 2, lwPlintAfterW, Math.PI / 2);
+        // Back wall (z=0): left of garden door, between door and window, right of window
+        const bwP1W = gardenDoorX - gardenDoorW / 2;
+        if (bwP1W > 0.05) addPlint(bwP1W / 2, 0.04, 0.01, bwP1W, 0);
+        const bwP2L = gardenDoorX + gardenDoorW / 2;
+        const bwP2R = bwWinX - bwWinW / 2;
+        const bwP2W = bwP2R - bwP2L;
+        if (bwP2W > 0.05) addPlint(bwP2L + bwP2W / 2, 0.04, 0.01, bwP2W, 0);
+        // Under window = window sill, no plint needed
+        const bwP3L = bwWinX + bwWinW / 2;
+        const bwP3W = W - bwP3L;
+        if (bwP3W > 0.05) addPlint(bwP3L + bwP3W / 2, 0.04, 0.01, bwP3W, 0);
+        // Left wall (x=0): 3 segments around kitchen door and double doors
+        const lwP1W = kitchenDoorZ - kitchenDoorW / 2;
+        if (lwP1W > 0.05) addPlint(0.01, 0.04, lwP1W / 2, lwP1W, Math.PI / 2);
+        const lwP2L = kitchenDoorZ + kitchenDoorW / 2;
+        const lwP2R = gangDoorZ - gangDoorW / 2;
+        const lwP2W = lwP2R - lwP2L;
+        if (lwP2W > 0.05) addPlint(0.01, 0.04, lwP2L + lwP2W / 2, lwP2W, Math.PI / 2);
+        const lwP3L = gangDoorZ + gangDoorW / 2;
+        const lwP3W = L - lwP3L;
+        if (lwP3W > 0.05) addPlint(0.01, 0.04, lwP3L + lwP3W / 2, lwP3W, Math.PI / 2);
         // Right wall (full length, no doors)
         addPlint(W - 0.01, 0.04, L / 2, L, Math.PI / 2);
 

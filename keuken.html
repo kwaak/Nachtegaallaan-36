@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nachtegaallaan 36 - Keuken</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #000; font-family: Arial, sans-serif; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            color: #fff;
+            background: rgba(0,0,0,0.7);
+            padding: 12px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #info h2 { margin-bottom: 4px; font-size: 16px; }
+        #dimensions { color: #aaa; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>Nachtegaallaan 36 - Keuken</h2>
+        <div id="dimensions">3m breed &times; 4m lang &times; 3m hoog</div>
+        <div style="margin-top:6px; font-size:12px; color:#999;">
+            Klik + sleep om te draaien<br>
+            Scrollwiel om te zoomen<br>
+            Rechtermuisknop om te pannen
+        </div>
+    </div>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(5, 3.5, 4);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(1.5, 1.5, 2);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI * 0.85;
+        controls.update();
+
+        // --- Keuken dimensions ---
+        const W = 3;   // breedte (x)
+        const L = 4;   // lengte (z)
+        const H = 3;   // hoogte (y)
+
+        // --- Materials ---
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0xe0d8cc, roughness: 0.6 });
+        // Tile pattern
+        const tileCanvas = document.createElement('canvas');
+        tileCanvas.width = 256;
+        tileCanvas.height = 256;
+        const tCtx = tileCanvas.getContext('2d');
+        tCtx.fillStyle = '#e0d8cc';
+        tCtx.fillRect(0, 0, 256, 256);
+        tCtx.strokeStyle = '#ccc4b0';
+        tCtx.lineWidth = 2;
+        for (let i = 0; i <= 256; i += 64) {
+            tCtx.beginPath(); tCtx.moveTo(i, 0); tCtx.lineTo(i, 256); tCtx.stroke();
+            tCtx.beginPath(); tCtx.moveTo(0, i); tCtx.lineTo(256, i); tCtx.stroke();
+        }
+        const tileTex = new THREE.CanvasTexture(tileCanvas);
+        tileTex.wrapS = tileTex.wrapT = THREE.RepeatWrapping;
+        tileTex.repeat.set(W * 2, L * 2);
+        floorMat.map = tileTex;
+
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.9 });
+        const ceilingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 });
+        const plintMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.5 });
+        const frameMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f8, roughness: 0.3 });
+        const doorMat = new THREE.MeshStandardMaterial({ color: 0xf0ece4, roughness: 0.6 });
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, metalness: 0.8, roughness: 0.2 });
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color: 0xaaddff, transparent: true, opacity: 0.3,
+            roughness: 0.0, metalness: 0.1, transmission: 0.8,
+        });
+
+        function addFrame(x, y, z, w, h, d) {
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), frameMat);
+            frame.position.set(x, y, z);
+            frame.castShadow = true;
+            scene.add(frame);
+        }
+
+        // Floor
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, L), floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.position.set(W / 2, 0, L / 2);
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Ceiling
+        const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(W, L), ceilingMat);
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.set(W / 2, H, L / 2);
+        scene.add(ceiling);
+
+        // =============================================
+        // Back wall (z=0) - TUINKANT - raam + tuindeur
+        // =============================================
+        // Layout: [0.2][tuindeur 0.9][0.2][raam 1.5][0.2]
+        const kTuindeurW = 0.9;
+        const kTuindeurH = 2.1;
+        const kTuindeurX = 0.65;
+        const kWinW = 1.5;
+        const kWinX = 2.15;
+        const kWinBottom = 0.8;  // higher sill (above counter)
+        const kWinTop = 2.4;
+        const kWinH = kWinTop - kWinBottom;
+
+        const backWallGroup = new THREE.Group();
+        // Left of garden door
+        const bw1W = kTuindeurX - kTuindeurW / 2;
+        if (bw1W > 0.01) {
+            const bw1 = new THREE.Mesh(new THREE.PlaneGeometry(bw1W, H), wallMat);
+            bw1.position.set(bw1W / 2, H / 2, 0);
+            backWallGroup.add(bw1);
+        }
+        // Above garden door
+        const bwAboveDoor = new THREE.Mesh(new THREE.PlaneGeometry(kTuindeurW, H - kTuindeurH), wallMat);
+        bwAboveDoor.position.set(kTuindeurX, kTuindeurH + (H - kTuindeurH) / 2, 0);
+        backWallGroup.add(bwAboveDoor);
+        // Between door and window
+        const bwMidL = kTuindeurX + kTuindeurW / 2;
+        const bwMidR = kWinX - kWinW / 2;
+        const bwMidW = bwMidR - bwMidL;
+        if (bwMidW > 0.01) {
+            const bwMid = new THREE.Mesh(new THREE.PlaneGeometry(bwMidW, H), wallMat);
+            bwMid.position.set(bwMidL + bwMidW / 2, H / 2, 0);
+            backWallGroup.add(bwMid);
+        }
+        // Below window
+        const bwBelowWin = new THREE.Mesh(new THREE.PlaneGeometry(kWinW, kWinBottom), wallMat);
+        bwBelowWin.position.set(kWinX, kWinBottom / 2, 0);
+        backWallGroup.add(bwBelowWin);
+        // Above window
+        const bwAboveWin = new THREE.Mesh(new THREE.PlaneGeometry(kWinW, H - kWinTop), wallMat);
+        bwAboveWin.position.set(kWinX, kWinTop + (H - kWinTop) / 2, 0);
+        backWallGroup.add(bwAboveWin);
+        // Right of window
+        const bwRightL = kWinX + kWinW / 2;
+        const bwRightW = W - bwRightL;
+        if (bwRightW > 0.01) {
+            const bwRight = new THREE.Mesh(new THREE.PlaneGeometry(bwRightW, H), wallMat);
+            bwRight.position.set(bwRightL + bwRightW / 2, H / 2, 0);
+            backWallGroup.add(bwRight);
+        }
+        backWallGroup.position.z = 0;
+        backWallGroup.receiveShadow = true;
+        scene.add(backWallGroup);
+
+        // Kitchen garden door
+        addFrame(kTuindeurX - kTuindeurW / 2, kTuindeurH / 2, 0, 0.05, kTuindeurH, 0.1);
+        addFrame(kTuindeurX + kTuindeurW / 2, kTuindeurH / 2, 0, 0.05, kTuindeurH, 0.1);
+        addFrame(kTuindeurX, kTuindeurH, 0, kTuindeurW + 0.05, 0.05, 0.1);
+        const kGardenDoor = new THREE.Mesh(new THREE.BoxGeometry(0.88, kTuindeurH - 0.05, 0.04), doorMat);
+        kGardenDoor.geometry.translate(0.44, 0, 0);
+        kGardenDoor.position.set(kTuindeurX - kTuindeurW / 2 + 0.02, kTuindeurH / 2, 0);
+        scene.add(kGardenDoor);
+        // Glass in door
+        const kgdGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 1.0), glassMat);
+        kgdGlass.position.set(0.44, 0.35, 0.025);
+        kGardenDoor.add(kgdGlass);
+        const kgdHandle = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.03), handleMat);
+        kgdHandle.position.set(0.76, 0, 0.03);
+        kGardenDoor.add(kgdHandle);
+
+        // Kitchen window
+        const kGlass = new THREE.Mesh(new THREE.PlaneGeometry(kWinW, kWinH), glassMat);
+        kGlass.position.set(kWinX, kWinBottom + kWinH / 2, 0.01);
+        scene.add(kGlass);
+        addFrame(kWinX, kWinBottom, 0.01, kWinW + 0.06, 0.06, 0.06);
+        addFrame(kWinX, kWinTop, 0.01, kWinW + 0.06, 0.06, 0.06);
+        addFrame(kWinX - kWinW / 2, kWinBottom + kWinH / 2, 0.01, 0.06, kWinH, 0.06);
+        addFrame(kWinX + kWinW / 2, kWinBottom + kWinH / 2, 0.01, 0.06, kWinH, 0.06);
+        addFrame(kWinX, kWinBottom + kWinH / 2, 0.01, 0.03, kWinH, 0.03);
+
+        // =============================================
+        // Front wall (z=L) - WOONKAMER KANT - deur naar woonkamer
+        // =============================================
+        const wkDoorW = 0.85;
+        const wkDoorH = 2.1;
+        const wkDoorX = W - 0.6;  // right side, near woonkamer
+
+        const frontWallGroup = new THREE.Group();
+        // Left of door
+        const fw1W = wkDoorX - wkDoorW / 2;
+        const fw1 = new THREE.Mesh(new THREE.PlaneGeometry(fw1W, H), wallMat);
+        fw1.position.set(fw1W / 2, H / 2, 0);
+        frontWallGroup.add(fw1);
+        // Above door
+        const fwAbove = new THREE.Mesh(new THREE.PlaneGeometry(wkDoorW, H - wkDoorH), wallMat);
+        fwAbove.position.set(wkDoorX, wkDoorH + (H - wkDoorH) / 2, 0);
+        frontWallGroup.add(fwAbove);
+        // Right of door
+        const fw3L = wkDoorX + wkDoorW / 2;
+        const fw3W = W - fw3L;
+        if (fw3W > 0.01) {
+            const fw3 = new THREE.Mesh(new THREE.PlaneGeometry(fw3W, H), wallMat);
+            fw3.position.set(fw3L + fw3W / 2, H / 2, 0);
+            frontWallGroup.add(fw3);
+        }
+        frontWallGroup.rotation.y = Math.PI;
+        frontWallGroup.position.z = L;
+        scene.add(frontWallGroup);
+
+        // Door to woonkamer frame
+        addFrame(wkDoorX - wkDoorW / 2, wkDoorH / 2, L, 0.05, wkDoorH, 0.1);
+        addFrame(wkDoorX + wkDoorW / 2, wkDoorH / 2, L, 0.05, wkDoorH, 0.1);
+        addFrame(wkDoorX, wkDoorH, L, wkDoorW + 0.05, 0.05, 0.1);
+
+        // =============================================
+        // Left wall (x=0) - GANG KANT - deur naar gang
+        // =============================================
+        const gangDoorW = 0.85;
+        const gangDoorH = 2.1;
+        const gangDoorZ = 2.5;
+
+        const leftWallGroup = new THREE.Group();
+        const lw1W = gangDoorZ - gangDoorW / 2;
+        const lw1 = new THREE.Mesh(new THREE.PlaneGeometry(lw1W, H), wallMat);
+        lw1.position.set(lw1W / 2, H / 2, 0);
+        leftWallGroup.add(lw1);
+        const lwAbove = new THREE.Mesh(new THREE.PlaneGeometry(gangDoorW, H - gangDoorH), wallMat);
+        lwAbove.position.set(gangDoorZ, gangDoorH + (H - gangDoorH) / 2, 0);
+        leftWallGroup.add(lwAbove);
+        const lw3L = gangDoorZ + gangDoorW / 2;
+        const lw3W = L - lw3L;
+        const lw3 = new THREE.Mesh(new THREE.PlaneGeometry(lw3W, H), wallMat);
+        lw3.position.set(lw3L + lw3W / 2, H / 2, 0);
+        leftWallGroup.add(lw3);
+        leftWallGroup.rotation.y = Math.PI / 2;
+        leftWallGroup.position.set(0, 0, 0);
+        scene.add(leftWallGroup);
+
+        // Gang door frame
+        addFrame(0, gangDoorH / 2, gangDoorZ - gangDoorW / 2, 0.1, gangDoorH, 0.05);
+        addFrame(0, gangDoorH / 2, gangDoorZ + gangDoorW / 2, 0.1, gangDoorH, 0.05);
+        addFrame(0, gangDoorH, gangDoorZ, 0.1, 0.05, gangDoorW + 0.05);
+        const gangDoor = new THREE.Mesh(new THREE.BoxGeometry(0.04, gangDoorH - 0.05, 0.83), doorMat);
+        gangDoor.geometry.translate(0, 0, -0.415);
+        gangDoor.position.set(0, gangDoorH / 2, gangDoorZ + gangDoorW / 2 - 0.02);
+        gangDoor.rotation.y = 0.4;
+        scene.add(gangDoor);
+        const gHandle = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.1), handleMat);
+        gHandle.position.set(0.03, 0, -0.7);
+        gangDoor.add(gHandle);
+
+        // =============================================
+        // Right wall (x=W) - buurmuur (dicht)
+        // =============================================
+        const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(L, H), wallMat);
+        rightWall.rotation.y = -Math.PI / 2;
+        rightWall.position.set(W, H / 2, L / 2);
+        rightWall.receiveShadow = true;
+        scene.add(rightWall);
+
+        // --- Lighting ---
+        const ambient = new THREE.AmbientLight(0xfff5e6, 0.5);
+        scene.add(ambient);
+
+        const ceilingLight = new THREE.PointLight(0xfff5e0, 1.2, 15);
+        ceilingLight.position.set(W / 2, H - 0.15, L / 2);
+        ceilingLight.castShadow = true;
+        scene.add(ceilingLight);
+
+        const fixtureMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.3, metalness: 0.8 });
+        const fixture = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.06, 16), fixtureMat);
+        fixture.position.set(W / 2, H - 0.03, L / 2);
+        scene.add(fixture);
+
+        // Sunlight from garden
+        const sunLight = new THREE.DirectionalLight(0xfff8e0, 1.2);
+        sunLight.position.set(W / 2, 4, -5);
+        sunLight.target.position.set(W / 2, 0, L / 2);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
+        scene.add(sunLight.target);
+
+        // --- Resize ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
