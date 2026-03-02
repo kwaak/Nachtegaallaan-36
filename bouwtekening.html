@@ -367,14 +367,14 @@
         // Woonkamer - keukendeur (x=1.2, z=2.5)
         drawDoor(1.2, 2.5, 0.85, -1, 0.5, 'z');
 
-        // Woonkamer - dubbele deuren naar gang (x=1.2, z=10)
-        drawDoubleDoor(1.2, 10, 1.6, 'z', -1);
+        // Woonkamer - enkele deur naar gang (x=1.2, z=11, bij voordeur)
+        drawDoor(1.2, 11, 0.85, -1, 0.4, 'z');
 
         // Gang - voordeur (z=12, x=0.6)
         drawDoor(0.6, 12, 0.95, -1, 0.3, 'x');
 
-        // Gang - keukendeur (z=6, x=0.6)
-        drawDoor(0.6, 6, 0.85, 1, 0.4, 'x');
+        // Gang - keukendeur (z=6, x=0.6) opent naar binnen (de keuken in)
+        drawDoor(0.6, 6, 0.85, -1, 0.4, 'x');
 
         // Gang - WC deur (x=0, z=6+1.5=7.5)
         drawDoor(0, 7.5, 0.7, 1, 0.5, 'z');
