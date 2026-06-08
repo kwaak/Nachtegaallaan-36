@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nachtegaallaan 36 — Woonkamer wireframe</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; background: #0b0e14; font-family: system-ui, sans-serif; }
+    #app { position: fixed; inset: 0; }
+    #info {
+      position: fixed; top: 12px; left: 12px; z-index: 10;
+      background: rgba(15, 20, 30, 0.82); color: #cfe3ff;
+      padding: 12px 14px; border-radius: 8px; font-size: 13px; line-height: 1.5;
+      border: 1px solid rgba(120, 170, 255, 0.25); max-width: 280px;
+    }
+    #info h1 { font-size: 14px; margin-bottom: 6px; color: #8ec5ff; }
+    #info .dim { color: #9fb3c8; }
+    #info ul { list-style: none; margin-top: 6px; }
+    #info li { display: flex; align-items: center; gap: 6px; }
+    #info .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+    #info .note { margin-top: 8px; font-size: 11px; color: #76879c; }
+    #hint {
+      position: fixed; bottom: 12px; left: 12px; z-index: 10; color: #5d6b7d; font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="info">
+    <h1>Woonkamer — wireframe</h1>
+    <div class="dim">Geschat: <b>4,0 × 8,5 × 2,6 m</b> (B × L × H)</div>
+    <ul>
+      <li><span class="swatch" style="background:#6cf"></span> Wanden / vloer / plafond</li>
+      <li><span class="swatch" style="background:#ffd24a"></span> Tuinpui (schuifpui + ramen)</li>
+      <li><span class="swatch" style="background:#ff7a59"></span> Schouw / open haard</li>
+      <li><span class="swatch" style="background:#9af28a"></span> Hoge kast</li>
+      <li><span class="swatch" style="background:#c08cff"></span> Bank + salontafel</li>
+      <li><span class="swatch" style="background:#f5f5f5"></span> Eettafel + stoelen</li>
+      <li><span class="swatch" style="background:#ff5ea8"></span> Deuren (hal / kast)</li>
+    </ul>
+    <div class="note">Maten zijn schattingen uit de foto, geen exacte opmeting. Pas de waarden bovenin het script aan voor echte afmetingen.</div>
+  </div>
+  <div id="hint">Slepen = draaien · scroll = zoomen · rechtsklik-slepen = verplaatsen</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ----------------------------------------------------------------------
+    // Geschatte kamerafmetingen (meters). Pas aan voor exacte opmeting.
+    // ----------------------------------------------------------------------
+    const ROOM = { w: 4.0, l: 8.5, h: 2.6 }; // breedte (X), lengte (Z), hoogte (Y)
+
+    const COLORS = {
+      shell:  0x66ccff,
+      glass:  0xffd24a,
+      hearth: 0xff7a59,
+      closet: 0x9af28a,
+      sofa:   0xc08cff,
+      table:  0xf5f5f5,
+      door:   0xff5ea8,
+    };
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b0e14);
+
+    const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.01, 1000);
+    camera.position.set(ROOM.w * 1.6, ROOM.h * 1.9, ROOM.l * 0.95);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    document.getElementById('app').appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, ROOM.h * 0.4, 0);
+
+    // Helper: maak een wireframe box met gegeven afmetingen, gecentreerd op (cx,cy,cz)
+    function wireBox(w, h, d, cx, cy, cz, color, opacity = 1) {
+      const geo = new THREE.BoxGeometry(w, h, d);
+      const edges = new THREE.EdgesGeometry(geo);
+      const mat = new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity });
+      const line = new THREE.LineSegments(edges, mat);
+      line.position.set(cx, cy, cz);
+      scene.add(line);
+      return line;
+    }
+
+    // Helper: vlak (paneel) als wireframe, in het XY- of YZ-vlak
+    function wirePlane(w, h, cx, cy, cz, color, axis = 'z') {
+      const geo = new THREE.PlaneGeometry(w, h);
+      const edges = new THREE.EdgesGeometry(geo);
+      const mat = new THREE.LineBasicMaterial({ color });
+      const line = new THREE.LineSegments(edges, mat);
+      if (axis === 'x') line.rotation.y = Math.PI / 2;
+      line.position.set(cx, cy, cz);
+      scene.add(line);
+      return line;
+    }
+
+    // Coördinatenstelsel: kamer gecentreerd rond oorsprong.
+    // X = breedte (-w/2 .. +w/2), Y = hoogte (0 .. h), Z = lengte (-l/2 .. +l/2)
+    // Achterwand (tuinzijde) op Z = -l/2, voorwand op Z = +l/2.
+
+    // --- Kamerschil (vloer, plafond, 4 wanden) als één wireframe box ---
+    wireBox(ROOM.w, ROOM.h, ROOM.l, 0, ROOM.h / 2, 0, COLORS.shell);
+
+    // Vloerraster (parket-achtig) voor dieptegevoel
+    const grid = new THREE.GridHelper(Math.max(ROOM.w, ROOM.l), 20, 0x244, 0x1a2a3a);
+    grid.scale.set(ROOM.w / Math.max(ROOM.w, ROOM.l), 1, ROOM.l / Math.max(ROOM.w, ROOM.l));
+    scene.add(grid);
+
+    // --- Tuinpui op de achterwand (Z = -l/2): grote schuifpui + ramen ---
+    const backZ = -ROOM.l / 2;
+    wirePlane(ROOM.w * 0.85, ROOM.h * 0.78, 0, ROOM.h * 0.45, backZ + 0.01, COLORS.glass, 'z');
+    // verticale stijlen die de pui in drie delen verdelen
+    for (const fx of [-1/3, 1/3]) {
+      wirePlane(0.02, ROOM.h * 0.78, ROOM.w * 0.85 * fx, ROOM.h * 0.45, backZ + 0.02, COLORS.glass, 'z');
+    }
+
+    // --- Open haard / schouw op de linkerwand (X = -w/2), richting voorkant ---
+    const leftX = -ROOM.w / 2;
+    // schouwblok dat van de wand uitsteekt
+    wireBox(0.9, 1.4, 1.6, leftX + 0.45, 0.7, ROOM.l * 0.18, COLORS.hearth);
+    // haardopening
+    wireBox(0.7, 0.55, 0.4, leftX + 0.35, 0.42, ROOM.l * 0.18, COLORS.hearth);
+
+    // --- Hoge zwarte kast op de rechterwand (X = +w/2), bij de tuinpui ---
+    const rightX = ROOM.w / 2;
+    wireBox(0.6, 2.2, 1.0, rightX - 0.3, 1.1, -ROOM.l * 0.28, COLORS.closet);
+
+    // --- Eettafel + stoelen, midden-achter ---
+    const tableZ = -ROOM.l * 0.12;
+    wireBox(1.6, 0.04, 0.95, 0, 0.76, tableZ, COLORS.table); // tafelblad
+    // 4 tafelpoten
+    for (const sx of [-0.7, 0.7]) for (const sz of [-0.4, 0.4]) {
+      wireBox(0.06, 0.74, 0.06, sx, 0.37, tableZ + sz, COLORS.table);
+    }
+    // 4 stoelen (zitting + rug)
+    const chairPos = [[0, -0.7], [0, 0.7], [-0.95, 0], [0.95, 0]];
+    for (const [cx, cz] of chairPos) {
+      wireBox(0.45, 0.04, 0.45, cx, 0.46, tableZ + cz, COLORS.table);
+      wireBox(0.45, 0.5, 0.05, cx, 0.7, tableZ + cz + (cz >= 0 ? 0.2 : -0.2), COLORS.table);
+    }
+
+    // --- Bank langs de rechter-voorzijde + salontafel ---
+    wireBox(0.9, 0.8, 2.2, rightX - 0.45, 0.4, ROOM.l * 0.28, COLORS.sofa); // bank
+    wireBox(1.1, 0.4, 0.6, ROOM.w * 0.05, 0.2, ROOM.l * 0.28, COLORS.sofa); // salontafel
+
+    // --- Deuren op de rechter-/voorwand (hal + kastdeuren) ---
+    // deur naar hal in de voorwand
+    const frontZ = ROOM.l / 2;
+    wirePlane(0.9, 2.1, ROOM.w * 0.25, 1.05, frontZ - 0.01, COLORS.door, 'z');
+    // (dubbele) deuren in de rechterwand vooraan
+    wirePlane(1.4, 2.1, rightX - 0.01, 1.05, ROOM.l * 0.30, COLORS.door, 'x');
+
+    // --- Asindicator + maatlijnen ---
+    const axes = new THREE.AxesHelper(1.0);
+    axes.position.set(-ROOM.w / 2, 0, ROOM.l / 2);
+    scene.add(axes);
+
+    // Lichten zijn niet nodig voor lijnen, maar geven AxesHelper geen effect.
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    (function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    })();
+  </script>
+</body>
+</html>
